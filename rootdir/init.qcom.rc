@@ -21,9 +21,6 @@ on early-init
     mkdir /firmware 0771 system system
     mkdir /data/tombstones 0771 system system
     symlink /data/tombstones /tombstones
-    mkdir /ftmd 0771 root system
-    mkdir /ftma 0771 system system
-    mkdir /lta-label 0771 system system
 
 on init
     mkdir /persist 0771 system system
@@ -34,17 +31,11 @@ on init
     symlink /dev/socket /tmp
 
     write /sys/block/zram0/comp_algorithm lz4
-    write /proc/sys/vm/page-cluster 0
+    write /proc/sys/vm/page-cluster 8
 
 on fs
     mount_all fstab.qcom
     swapon_all fstab.qcom
-
-    chmod 0750 /ftma/cci-flex.sh
-    chmod 0750 /ftma/custom-flex.sh
-
-on post-fs
-    mkdir /dev/socket/suntory 0755 system system
 
 on post-fs-data
     # Create the directories used by the Wireless subsystem
@@ -119,7 +110,7 @@ on boot
     chmod 0660 /dev/ttyHS0
     chown bluetooth bluetooth /sys/devices/platform/msm_serial_hs.0/clock
     chmod 0660 /sys/devices/platform/msm_serial_hs.0/clock
-    write /sys/module/subsystem_restart/parameters/restart_level 1
+    write /sys/module/subsystem_restart/parameters/restart_level 3
     write /sys/module/subsystem_restart/parameters/max_restarts 8
     write /sys/module/subsystem_restart/parameters/max_history_time 3600
 
@@ -248,10 +239,10 @@ on boot
     restorecon /sys/class/timed_output/vibrator/level
 
     # Increase read_ahead
-    write /sys/block/mmcblk0/bdi/read_ahead_kb 256
-    write /sys/block/mmcblk1/bdi/read_ahead_kb 256
+    write /sys/block/mmcblk0/bdi/read_ahead_kb 128
+    write /sys/block/mmcblk1/bdi/read_ahead_kb 128
 
-    write /sys/devices/platform/msm_sdcc.3/idle_timeout 10
+    write /sys/devices/platform/msm_sdcc.3/idle_timeout 0
 
     # Post-setup services
     rm /data/mpdecision/power_collapse
@@ -270,17 +261,15 @@ service rmt_storage /system/bin/rmt_storage
     class core
     user root
     group system
-    disabled
 
 on property:ro.boot.emmc=true
     start rmt_storage
     start ta_qmi_service
 
 service hciattach /system/bin/sh /system/etc/init.qcom.bt.sh
-    class late_start
+    class main
     user bluetooth
     group qcom_oncrpc bluetooth net_bt_admin net_bt_stack
-    disabled
     oneshot
 
 on property:bluetooth.hciattach=true
@@ -303,37 +292,34 @@ service netmgrd /system/bin/netmgrd
 on property:ro.data.large_tcp_window_size=true
     write /proc/sys/net/ipv4/tcp_adv_win_scale  2
 
-service p2p_supplicant /system/bin/wpa_supplicant \
-    -ip2p0 -Dnl80211 -c/data/misc/wifi/p2p_supplicant.conf -N \
-    -iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf \
-    -O/data/misc/wifi/sockets -puse_p2p_group_interface=1 -ddd \
+service p2p_supplicant /system/bin/wpa_supplicant
+    -ip2p0 -Dnl80211 -c/data/misc/wifi/p2p_supplicant.conf -N
+    -iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf
+    -O/data/misc/wifi/sockets -puse_p2p_group_interface=1 -ddd
     -e/data/misc/wifi/entropy.bin -g@android:wpa_wlan0
     #   we will start as root and wpa_supplicant will switch to user wifi
     #   after setting up the capabilities required for WEXT
-    #   user wifi
-    #   group wifi inet keystore
+    user wifi
+    group wifi inet keystore
     class main
     socket wpa_wlan0 dgram 660 wifi wifi
-    disabled
     oneshot
 
-service wpa_supplicant /system/bin/wpa_supplicant \
-    -iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf \
-    -O/data/misc/wifi/sockets -d \
+service wpa_supplicant /system/bin/wpa_supplicant
+    -iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf
+    -O/data/misc/wifi/sockets -d
     -e/data/misc/wifi/entropy.bin -g@android:wpa_wlan0
     #   we will start as root and wpa_supplicant will switch to user wifi
     #   after setting up the capabilities required for WEXT
-    #   user wifi
-    #   group wifi inet keystore
+    user wifi
+    group wifi inet keystore
     class main
     socket wpa_wlan0 dgram 660 wifi wifi
-    disabled
     oneshot
 
 service drmdiag /system/bin/drmdiagapp
-    class late_start
+    class main
      user root
-     disabled
      oneshot
 
 on property:drmdiag.load=1
@@ -343,11 +329,10 @@ on property:drmdiag.load=0
     stop drmdiag
 
 service hostapd /system/bin/hostapd /data/hostapd/hostapd.conf
-    class late_start
+    class main
     user root
     group root
     oneshot
-    disabled
 
 on property:ro.data.large_tcp_window_size=true
     # Adjust socket buffer to enlarge TCP receive window for high bandwidth (e.g. DO-RevB)
@@ -360,7 +345,6 @@ service charger /sbin/healthd -c
 
 service ta_qmi_service /system/bin/ta_qmi_service
     user root
-    disabled
 
 service updatemiscta /system/bin/updatemiscta
     class main
@@ -373,38 +357,33 @@ service cci_tatest /system/bin/cci_tatest
     oneshot
 
 service qcom-sh /system/bin/sh /init.qcom.sh
-    class late_start
+    class main
     user root
     oneshot
 
 service qcom-post-boot /system/bin/sh /system/etc/init.qcom.post_boot.sh
-    class late_start
+    class main
     user root
-    disabled
     oneshot
 
 service qcom-early_boot /system/bin/sh /init.qcom.early_boot.sh ${ro.board.platform}
-    disabled
     oneshot
 
 service qcom-syspart_fixup /system/bin/sh /init.qcom.syspart_fixup.sh ${ro.board.platform} ${ro.serialno}
-    disabled
     oneshot
 
 on property:sys.boot_completed=1
     start qcom-post-boot
 
 service profiler_daemon /system/bin/profiler_daemon
-    class late_start
+    class main
     user root
     group root
-    disabled
 
 service fm_dl /system/bin/sh /system/etc/init.qcom.fm.sh
-    class late_start
+    class main
     user system
     group system
-    disabled
     oneshot
 
 service tad_static /sbin/tad_static /dev/block/platform/msm_sdcc.1/by-name/TA 0,16
@@ -415,20 +394,18 @@ service tad_static /sbin/tad_static /dev/block/platform/msm_sdcc.1/by-name/TA 0,
     seclabel u:r:tad:s0
 
 service taimport /system/bin/taimport
-    class late_start
+    class main
     user root
     group system
     oneshot
 
 service mpdecision /system/bin/mpdecision --no_sleep --avg_comp
    user root
-   disabled
 
 service akmd /system/bin/akmd8963 -m 5 -o 1
     class main
     user system
     group system
-    disabled
 
 service thermald /system/bin/thermald
    class main
@@ -436,17 +413,17 @@ service thermald /system/bin/thermald
    group root
 
 service qcamerasvr /system/bin/mm-qcamera-daemon
-   class late_start
+   class main
    user camera
    group camera system inet input graphics net_bt_stack
 
 service qseecomd /system/bin/qseecomd
-   class late_start
+   class main
    user system
    group system
 
 service wcnss-service /system/bin/wcnss_service
-     class late_start
+     class main
      user system
      group system wifi
      oneshot
